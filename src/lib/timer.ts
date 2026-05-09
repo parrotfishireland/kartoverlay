@@ -99,6 +99,6 @@ export function formatTotalTime(ms: number): string {
   // m:ss.mmm
   const mins = Math.floor(ms / 60000);
   const secs = Math.floor((ms % 60000) / 1000);
-  const millis = ms % 1000;
+  const millis = Math.floor(ms % 1000);
   return `${mins}:${String(secs).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
 }
