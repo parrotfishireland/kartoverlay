@@ -1,23 +1,13 @@
-// kartoverlay/src/app/api/jobs/route.ts
-//
-// Simplified for Modal backend — no job queue, no polling.
-// POST /api/jobs  →  calls Modal endpoint synchronously  →  streams AVI back to browser.
-//
-// NOTE on Vercel timeouts:
-//   Hobby plan: 60s max — may cut off long sessions
-//   Pro plan:   300s max — handles any session length comfortably
-// For family beta, this is fine. Upgrade to Pro before public launch.
-
 import { NextRequest, NextResponse } from 'next/server';
+
+export const runtime = 'edge';
+export const maxDuration = 300;
 
 const MODAL_ENDPOINT = process.env.MODAL_ENDPOINT ?? '';
 
 export async function POST(req: NextRequest) {
   if (!MODAL_ENDPOINT) {
-    return NextResponse.json(
-      { error: 'MODAL_ENDPOINT not configured. Deploy the Modal function and set the env var.' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'MODAL_ENDPOINT not configured' }, { status: 500 });
   }
 
   let body: { laps: { lap: number; lapTime: number }[] };
@@ -40,11 +30,9 @@ export async function POST(req: NextRequest) {
 
     if (!modalRes.ok) {
       const err = await modalRes.text();
-      console.error('Modal error:', err);
       return NextResponse.json({ error: 'Video generation failed', detail: err }, { status: 502 });
     }
 
-    // Stream the AVI bytes straight back to the browser
     const videoBuffer = await modalRes.arrayBuffer();
 
     return new NextResponse(videoBuffer, {
@@ -57,9 +45,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error('Jobs route error:', err);
-    return NextResponse.json(
-      { error: 'Could not reach video generation service.' },
-      { status: 503 }
-    );
+    return NextResponse.json({ error: 'Could not reach video generation service.' }, { status: 503 });
   }
 }
