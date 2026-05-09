@@ -1,0 +1,40 @@
+/* kartoverlay/src/app/globals.css */
+
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Share+Tech+Mono&display=swap');
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --orange: #ff6400;
+  --orange-dim: rgba(255,100,0,0.6);
+  --orange-faint: rgba(255,100,0,0.15);
+  --amber: #ffaa00;
+  --white: #ffffff;
+  --white-dim: rgba(255,255,255,0.55);
+  --bg: #080604;
+  --bg-surface: #0e0b08;
+  --bg-card: #120e0a;
+  --border: rgba(255,100,0,0.2);
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--white);
+  font-family: 'Rajdhani', 'Arial', sans-serif;
+  min-height: 100vh;
+}
+
+::selection {
+  background: var(--orange);
+  color: var(--bg);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--orange-dim); }
