@@ -88,7 +88,7 @@ export function getHudState(laps: Lap[], totalMs: number): HudState {
 export function formatLapTime(ms: number): { secs: string; frac: string } {
   // ss.mmm — seconds always 2 digits, no minutes prefix
   const s = Math.floor(ms / 1000);
-  const m = ms % 1000;
+  const m = Math.floor(ms % 1000);
   return {
     secs: String(s).padStart(2, '0'),
     frac: '.' + String(m).padStart(3, '0'),
