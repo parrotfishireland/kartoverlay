@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'jobId required' }, { status: 400 });
   }
 
-  const raw = await redisGet(`job:${jobId}`);
+  const raw = await redisGet(`job_${jobId}`);
   if (!raw) {
     return NextResponse.json({ error: 'Job not found' }, { status: 404 });
   }

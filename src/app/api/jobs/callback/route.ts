@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     const url    = body.url ?? '';
 
     await redisSet(
-      `job:${jobId}`,
+      `job_${jobId}`,
       JSON.stringify({ status, url }),
       3600
     );
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('Callback error:', err);
-    await redisSet(`job:${jobId}`, JSON.stringify({ status: 'error' }), 3600);
+    await redisSet(`job_${jobId}`, JSON.stringify({ status: 'error' }), 3600);
     return NextResponse.json({ error: 'Callback failed' }, { status: 500 });
   }
 }

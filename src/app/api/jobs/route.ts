@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   const jobId = crypto.randomUUID();
 
   // Store initial status
-  await redisSet(`job:${jobId}`, JSON.stringify({ status: 'processing' }));
+  await redisSet(`job_${jobId}`, JSON.stringify({ status: 'processing' }));
 
   // Build callback URL
   const host = req.headers.get('host') ?? '';
