@@ -1,6 +1,6 @@
 // src/app/api/jobs/callback/route.ts
-// Modal POSTs the finished AVI here when rendering is complete.
-// We store the video as base64 in Redis so the browser can download it.
+// Modal POSTs JSON here when rendering is complete: { status, url }
+// We store the result in Upstash so the browser polling can pick it up.
 
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -25,17 +25,13 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Read the AVI bytes Modal sent
-    const arrayBuffer = await req.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    const body = await req.json();
+    const status = body.status ?? 'error';
+    const url    = body.url ?? '';
 
-    // Store video in Redis with 1 hour TTL
-    await redisSet(`video:${jobId}`, base64, 3600);
-
-    // Mark job as done with download URL
     await redisSet(
       `job:${jobId}`,
-      JSON.stringify({ status: 'done', url: `/api/jobs/download?jobId=${jobId}` }),
+      JSON.stringify({ status, url }),
       3600
     );
 
