@@ -1,4 +1,3 @@
-// src/app/api/jobs/status/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
 const UPSTASH_URL   = process.env.UPSTASH_REDIS_REST_URL ?? '';
