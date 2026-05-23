@@ -1,9 +1,23 @@
+// src/app/api/jobs/route.ts
+// Fires Modal job asynchronously — returns jobId immediately, no waiting.
+// Modal calls back to /api/jobs/callback when done.
+
 import { NextRequest, NextResponse } from 'next/server';
 
-export const runtime = 'edge';
-export const maxDuration = 300;
-
 const MODAL_ENDPOINT = process.env.MODAL_ENDPOINT ?? '';
+const UPSTASH_URL    = process.env.UPSTASH_REDIS_REST_URL ?? '';
+const UPSTASH_TOKEN  = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
+
+async function redisSet(key: string, value: string) {
+  await fetch(`${UPSTASH_URL}/set/${key}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${UPSTASH_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(value),
+  });
+}
 
 export async function POST(req: NextRequest) {
   if (!MODAL_ENDPOINT) {
@@ -21,30 +35,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No laps provided' }, { status: 400 });
   }
 
-  try {
-    const modalRes = await fetch(MODAL_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ laps: body.laps }),
-    });
+  // Generate a job ID
+  const jobId = crypto.randomUUID();
 
-    if (!modalRes.ok) {
-      const err = await modalRes.text();
-      return NextResponse.json({ error: 'Video generation failed', detail: err }, { status: 502 });
-    }
+  // Store initial status in Redis
+  await redisSet(`job:${jobId}`, JSON.stringify({ status: 'processing', progress: 0 }));
 
-    const videoBuffer = await modalRes.arrayBuffer();
+  // Get the callback URL (where Modal will POST the finished video)
+  const host = req.headers.get('host') ?? '';
+  const protocol = host.includes('localhost') ? 'http' : 'https';
+  const callbackUrl = `${protocol}://${host}/api/jobs/callback?jobId=${jobId}`;
 
-    return new NextResponse(videoBuffer, {
-      status: 200,
-      headers: {
-        'Content-Type': 'video/x-msvideo',
-        'Content-Disposition': 'attachment; filename="kart_overlay.avi"',
-        'Content-Length': String(videoBuffer.byteLength),
-      },
-    });
-  } catch (err) {
-    console.error('Jobs route error:', err);
-    return NextResponse.json({ error: 'Could not reach video generation service.' }, { status: 503 });
-  }
+  // Fire Modal — don't await it
+  fetch(MODAL_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ laps: body.laps, callbackUrl }),
+  }).catch((err) => console.error('Modal fire error:', err));
+
+  return NextResponse.json({ jobId });
 }

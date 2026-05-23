@@ -1,9 +1,8 @@
 'use client';
-// kartoverlay/src/app/create/page.tsx
-// Simplified for Modal backend: no polling, no job IDs.
-// Generate fires one request; response IS the AVI bytes; browser download triggers automatically.
+// src/app/create/page.tsx
+// Async flow: fires job → polls status every 3s → downloads when done.
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import ScreenshotUpload from '@/components/ScreenshotUpload';
 import HudPreview from '@/components/HudPreview';
@@ -20,9 +19,16 @@ export default function CreatePage() {
   const [playing, setPlaying] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [extracting, setExtracting] = useState(false);
-  const [generatingMsg, setGeneratingMsg] = useState('');
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [pollMsg, setPollMsg] = useState('');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Step 1: Extract laps from screenshots ──────────────────────────────
+  // ── Cleanup polling on unmount ─────────────────────────────────────────
+  useEffect(() => {
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
+  // ── Step 1: Extract laps ───────────────────────────────────────────────
   const handleExtract = useCallback(async () => {
     if (files.length === 0) return;
     setExtracting(true);
@@ -62,50 +68,71 @@ export default function CreatePage() {
     }
   }, [files]);
 
-  // ── Step 2: Generate video ──────────────────────────────────────────────
-  // Modal returns AVI bytes directly. We blob → object URL → auto-download.
+  // ── Step 2: Fire job, then poll ────────────────────────────────────────
   const handleGenerate = useCallback(async () => {
     if (lapsRaw.length === 0) return;
     setStep('generating');
-
-    const sessionSecs = Math.round(lapsRaw.reduce((s, l) => s + l.lapTime, 0));
-    setGeneratingMsg(`Rendering ${lapsRaw.length} laps (~${sessionSecs}s of footage)…`);
+    setPollMsg('Starting render…');
 
     try {
-      const res = await fetch(process.env.NEXT_PUBLIC_MODAL_ENDPOINT || '/api/jobs', {
+      // Fire job — returns immediately with jobId
+      const res = await fetch('/api/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ laps: lapsRaw }),
       });
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error ?? `Server error ${res.status}`);
-      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Server error ${res.status}`);
 
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'kart_overlay.avi';
-      a.click();
-      URL.revokeObjectURL(url);
+      const id: string = data.jobId;
+      setJobId(id);
 
-      setStep('done');
+      // Start polling
+      let elapsed = 0;
+      pollRef.current = setInterval(async () => {
+        elapsed += 3;
+        setPollMsg(`Rendering… ${elapsed}s`);
+
+        try {
+          const statusRes = await fetch(`/api/jobs/status?jobId=${id}`);
+          const status = await statusRes.json();
+
+          if (status.status === 'done') {
+            if (pollRef.current) clearInterval(pollRef.current);
+            // Trigger download
+            const a = document.createElement('a');
+            a.href = status.url;
+            a.download = 'kart_overlay.avi';
+            a.click();
+            setStep('done');
+          } else if (status.status === 'error') {
+            if (pollRef.current) clearInterval(pollRef.current);
+            throw new Error('Render failed on server');
+          }
+        } catch (pollErr) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setErrorMsg(pollErr instanceof Error ? pollErr.message : 'Polling error');
+          setStep('error');
+        }
+      }, 3000);
+
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Unknown error generating video');
+      setErrorMsg(err instanceof Error ? err.message : 'Unknown error starting job');
       setStep('error');
     }
   }, [lapsRaw]);
 
   const reset = () => {
+    if (pollRef.current) clearInterval(pollRef.current);
     setFiles([]);
     setStep('upload');
     setLapsRaw([]);
     setLaps([]);
     setPlaying(false);
     setErrorMsg('');
-    setGeneratingMsg('');
+    setJobId(null);
+    setPollMsg('');
   };
 
   const sessionTotalMs = laps.length > 0 ? laps[laps.length - 1].cumMs : 0;
@@ -158,9 +185,9 @@ export default function CreatePage() {
             <section style={s.section}>
               <SectionHeader n="03" title="Generating Video" />
               <div style={s.spinnerWrap}><div style={s.spinner} /></div>
-              <p style={s.genMsg}>{generatingMsg}</p>
+              <p style={s.genMsg}>{pollMsg}</p>
               <p style={s.genNote}>
-                Play the preview while you wait — download starts automatically.
+                Play the preview while you wait — download starts automatically when ready.
               </p>
             </section>
           )}
@@ -173,7 +200,11 @@ export default function CreatePage() {
                 Import → blend mode <strong>Screen</strong> → black drops out.<br />
                 Use the lap number incrementing as your sync marker.
               </div>
-              <button style={s.btnSecondary} onClick={handleGenerate}>Re-download</button>
+              {jobId && (
+                <a href={`/api/jobs/download?jobId=${jobId}`} download="kart_overlay.avi" style={s.btnDownload}>
+                  Re-download
+                </a>
+              )}
               <button style={s.btnReset} onClick={reset}>Start Over</button>
             </section>
           )}
@@ -189,7 +220,7 @@ export default function CreatePage() {
           )}
         </div>
 
-        {/* ── Right panel: live HUD ── */}
+        {/* ── Right panel ── */}
         <div style={s.right}>
           <div style={s.previewLabel}>LIVE PREVIEW</div>
           <HudPreview laps={laps} playing={playing} />
@@ -211,8 +242,6 @@ export default function CreatePage() {
     </div>
   );
 }
-
-// ── Sub-components ────────────────────────────────────────────────────────────
 
 function SectionHeader({ n, title }: { n: string; title: string }) {
   return (
@@ -244,8 +273,6 @@ function LapTable({ laps }: { laps: Lap[] }) {
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
-
 const s: Record<string, React.CSSProperties> = {
   root: { minHeight: '100vh', background: 'rgb(8,6,4)', color: '#fff' },
   nav: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 32px', borderBottom: '1px solid rgba(255,100,0,0.1)' },
@@ -258,7 +285,7 @@ const s: Record<string, React.CSSProperties> = {
   section: { display: 'flex', flexDirection: 'column', gap: 12 },
   btnPrimary: { background: 'linear-gradient(135deg, #ff5000, #ff8c00)', color: '#fff', border: 'none', borderRadius: 6, padding: '13px 24px', fontFamily: '"Rajdhani", Arial, sans-serif', fontWeight: 700, fontSize: 16, letterSpacing: '0.05em', cursor: 'pointer', width: '100%', boxShadow: '0 0 20px rgba(255,80,0,0.25)' },
   btnDisabled: { background: 'rgba(255,100,0,0.2)', color: 'rgba(255,255,255,0.4)', border: 'none', borderRadius: 6, padding: '13px 24px', fontFamily: '"Rajdhani", Arial, sans-serif', fontWeight: 700, fontSize: 16, letterSpacing: '0.05em', cursor: 'not-allowed', width: '100%' },
-  btnSecondary: { background: 'rgba(255,100,0,0.1)', color: '#ff6400', border: '1px solid rgba(255,100,0,0.3)', borderRadius: 6, padding: '11px 24px', fontFamily: '"Rajdhani", Arial, sans-serif', fontWeight: 700, fontSize: 15, letterSpacing: '0.05em', cursor: 'pointer', width: '100%' },
+  btnDownload: { display: 'block', background: 'rgba(255,100,0,0.1)', color: '#ff6400', border: '1px solid rgba(255,100,0,0.3)', borderRadius: 6, padding: '11px 24px', fontFamily: '"Rajdhani", Arial, sans-serif', fontWeight: 700, fontSize: 15, letterSpacing: '0.05em', cursor: 'pointer', width: '100%', textAlign: 'center', textDecoration: 'none' },
   btnReset: { background: 'transparent', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, padding: '10px 20px', fontFamily: 'Arial, sans-serif', fontSize: 13, cursor: 'pointer', width: '100%' },
   lapTable: { fontFamily: 'monospace', fontSize: 13, background: 'rgba(255,100,0,0.04)', border: '1px solid rgba(255,100,0,0.15)', borderRadius: 6, overflow: 'hidden', maxHeight: 280, overflowY: 'auto' },
   lapHeader: { display: 'grid', gridTemplateColumns: '50px 1fr 1fr', padding: '8px 14px', background: 'rgba(255,100,0,0.08)', color: '#ff6400', fontSize: 10, letterSpacing: '0.15em', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,100,0,0.15)' },
