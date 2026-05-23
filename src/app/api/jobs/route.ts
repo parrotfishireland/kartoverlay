@@ -1,22 +1,22 @@
 // src/app/api/jobs/route.ts
-// Fires Modal job asynchronously — returns jobId immediately.
-// Modal uploads video to Vercel Blob and POSTs the URL to /api/jobs/callback.
-
 import { NextRequest, NextResponse } from 'next/server';
 
 const MODAL_ENDPOINT  = process.env.MODAL_ENDPOINT ?? '';
 const UPSTASH_URL     = process.env.UPSTASH_REDIS_REST_URL ?? '';
 const UPSTASH_TOKEN   = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 
-async function redisSet(key: string, value: string) {
-  await fetch(`${UPSTASH_URL}/setex/${key}/7200`, {
+async function redisSet(key: string, value: unknown, exSeconds = 7200) {
+  const res = await fetch(`${UPSTASH_URL}/set/${encodeURIComponent(key)}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${UPSTASH_TOKEN}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(value),
+    body: JSON.stringify([JSON.stringify(value), 'EX', exSeconds]),
   });
+  if (!res.ok) {
+    console.error(`Redis write failed [${key}]:`, res.status, await res.text());
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -37,15 +37,12 @@ export async function POST(req: NextRequest) {
 
   const jobId = crypto.randomUUID();
 
-  // Store initial status
-  await redisSet(`job_${jobId}`, JSON.stringify({ status: 'processing' }));
+  await redisSet(`job_${jobId}`, { status: 'processing' });
 
-  // Build callback URL
   const host = req.headers.get('host') ?? '';
   const protocol = host.includes('localhost') ? 'http' : 'https';
   const callbackUrl = `${protocol}://${host}/api/jobs/callback?jobId=${jobId}`;
 
-  // Fire Modal — don't await
   fetch(MODAL_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
