@@ -8,7 +8,7 @@ const UPSTASH_URL   = process.env.UPSTASH_REDIS_REST_URL ?? '';
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 
 async function redisSet(key: string, value: string, exSeconds = 3600) {
-  await fetch(`${UPSTASH_URL}/set/${key}/ex/${exSeconds}`, {
+  await fetch(`${UPSTASH_URL}/setex/${key}/${exSeconds}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${UPSTASH_TOKEN}`,
