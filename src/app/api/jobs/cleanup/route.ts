@@ -20,16 +20,22 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Job not found' }, { status: 404 });
   }
 
-  const job = JSON.parse(redisData.result);
-  const blobUrl = job.url;
+  // Parse once — result may be a double-encoded string
+  let job: { status: string; url?: string };
+  try {
+    const first = JSON.parse(redisData.result);
+    job = typeof first === 'string' ? JSON.parse(first) : first;
+  } catch {
+    return NextResponse.json({ error: 'Failed to parse job data' }, { status: 500 });
+  }
 
+  const blobUrl = job.url;
   if (!blobUrl) {
     return NextResponse.json({ error: 'No blob URL found' }, { status: 404 });
   }
 
   // Extract pathname from the blob URL
-  // e.g. https://abc.public.blob.vercel-storage.com/kart_overlay_xxx.avi
-  const pathname = new URL(blobUrl).pathname.slice(1); // remove leading /
+  const pathname = new URL(blobUrl).pathname.slice(1);
 
   const deleteRes = await fetch(
     `https://blob.vercel-storage.com/${pathname}`,
