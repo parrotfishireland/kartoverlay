@@ -330,8 +330,15 @@ function ColorRow({ label, value, onChange }: { label: string; value: string; on
     <div style={cp.colorRow}>
       <span style={cp.colorLabel}>{label}</span>
       <div style={cp.colorRight}>
-        <div style={{ ...cp.colorSwatch, background: value }} />
-        <input type="color" value={value} onChange={(e) => onChange(e.target.value)} style={cp.colorInput} />
+        <div style={{ position: 'relative', width: 28, height: 22 }}>
+          <div style={{ ...cp.colorSwatch, width: 28, height: 22, borderRadius: 4, position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }} />
+          <input
+            type="color"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', border: 'none', padding: 0 }}
+          />
+        </div>
         <span style={cp.colorHex}>{value.toUpperCase()}</span>
       </div>
     </div>
