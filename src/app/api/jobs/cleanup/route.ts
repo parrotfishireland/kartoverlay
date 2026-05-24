@@ -1,6 +1,4 @@
 // src/app/api/jobs/cleanup/route.ts
-// Deletes the Vercel Blob file after the browser has downloaded it.
-
 import { NextRequest, NextResponse } from 'next/server';
 
 const BLOB_TOKEN    = process.env.BLOB_READ_WRITE_TOKEN ?? '';
@@ -29,15 +27,19 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'No blob URL found' }, { status: 404 });
   }
 
-  // Delete from Vercel Blob
-  const deleteRes = await fetch(blobUrl, {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${BLOB_TOKEN}` },
-  });
+  // Vercel Blob delete uses the /v1/blob endpoint with the URL as a query param
+  const deleteRes = await fetch(
+    `https://blob.vercel-storage.com?url=${encodeURIComponent(blobUrl)}`,
+    {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${BLOB_TOKEN}` },
+    }
+  );
 
   if (!deleteRes.ok) {
-    console.error('Blob delete failed:', deleteRes.status, await deleteRes.text());
-    return NextResponse.json({ error: 'Blob delete failed' }, { status: 500 });
+    const text = await deleteRes.text();
+    console.error('Blob delete failed:', deleteRes.status, text);
+    return NextResponse.json({ error: 'Blob delete failed', detail: text }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });
