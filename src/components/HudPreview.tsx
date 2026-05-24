@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Lap, getHudState, formatLapTime, formatTotalTime } from '@/lib/timer';
-import { HudConfig, DEFAULT_CONFIG } from '@/app/create/page';
+import { HudConfig, DEFAULT_CONFIG } from '@/lib/hudConfig';
 
 interface HudPreviewProps {
   laps: Lap[];
