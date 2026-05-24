@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'MODAL_ENDPOINT not configured' }, { status: 500 });
   }
 
-  let body: { laps: { lap: number; lapTime: number }[] };
+  let body: { laps: { lap: number; lapTime: number }[]; config?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   fetch(MODAL_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ laps: body.laps, callbackUrl, jobId }),
+    body: JSON.stringify({ laps: body.laps, callbackUrl, jobId, config: body.config ?? null }),
   }).catch((err) => console.error('Modal fire error:', err));
 
   return NextResponse.json({ jobId });

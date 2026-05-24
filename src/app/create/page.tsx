@@ -1,15 +1,75 @@
 'use client';
 // src/app/create/page.tsx
-// Async flow: fires job → polls status every 3s → downloads when done.
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import ScreenshotUpload from '@/components/ScreenshotUpload';
 import HudPreview from '@/components/HudPreview';
 import { buildLaps, LapRaw, Lap } from '@/lib/timer';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 
 type Step = 'upload' | 'extracted' | 'generating' | 'done' | 'error';
+
+export interface HudConfig {
+  // Colours
+  borderColor: string;
+  accentBarColor: string;
+  labelColor: string;
+  primaryNumberColor: string;
+  fracNumberColor: string;
+  totalTimeColor: string;
+  bestColor: string;
+  bgColor: string;
+  bgOpacity: number; // 0–100
+  // Toggles
+  showLapNumber: boolean;
+  showLapTime: boolean;
+  showTotal: boolean;
+  showBest: boolean;
+}
+
+export const DEFAULT_CONFIG: HudConfig = {
+  borderColor: '#FF6400',
+  accentBarColor: '#FF6400',
+  labelColor: '#FF6400',
+  primaryNumberColor: '#FFFFFF',
+  fracNumberColor: '#969696',
+  totalTimeColor: '#555555',
+  bestColor: '#FFAF00',
+  bgColor: '#080604',
+  bgOpacity: 100,
+  showLapNumber: true,
+  showLapTime: true,
+  showTotal: true,
+  showBest: true,
+};
+
+const PRESETS: { name: string; config: Partial<HudConfig> }[] = [
+  { name: 'Orange', config: {} },
+  {
+    name: 'White',
+    config: {
+      borderColor: '#FFFFFF', accentBarColor: '#FFFFFF', labelColor: '#CCCCCC',
+      primaryNumberColor: '#FFFFFF', fracNumberColor: '#888888',
+      totalTimeColor: '#666666', bestColor: '#FFFFFF', bgColor: '#0A0A0A',
+    },
+  },
+  {
+    name: 'Red',
+    config: {
+      borderColor: '#FF2020', accentBarColor: '#FF2020', labelColor: '#FF4040',
+      primaryNumberColor: '#FFFFFF', fracNumberColor: '#AA6666',
+      totalTimeColor: '#663333', bestColor: '#FF8800', bgColor: '#080404',
+    },
+  },
+  {
+    name: 'Cyan',
+    config: {
+      borderColor: '#00CFCF', accentBarColor: '#00CFCF', labelColor: '#00CFCF',
+      primaryNumberColor: '#FFFFFF', fracNumberColor: '#669999',
+      totalTimeColor: '#336666', bestColor: '#00FFAA', bgColor: '#040808',
+    },
+  },
+];
 
 export default function CreatePage() {
   const [files, setFiles] = useState<File[]>([]);
@@ -21,41 +81,33 @@ export default function CreatePage() {
   const [extracting, setExtracting] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const [pollMsg, setPollMsg] = useState('');
+  const [config, setConfig] = useState<HudConfig>(DEFAULT_CONFIG);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Cleanup polling on unmount ─────────────────────────────────────────
   useEffect(() => {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
-  // ── Step 1: Extract laps ───────────────────────────────────────────────
   const handleExtract = useCallback(async () => {
     if (files.length === 0) return;
     setExtracting(true);
     setErrorMsg('');
-
     try {
       const images = await Promise.all(
-        files.map(
-          (f) =>
-            new Promise<string>((res, rej) => {
-              const r = new FileReader();
-              r.onload = () => res(r.result as string);
-              r.onerror = () => rej(new Error('File read failed'));
-              r.readAsDataURL(f);
-            })
-        )
+        files.map((f) => new Promise<string>((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result as string);
+          r.onerror = () => rej(new Error('File read failed'));
+          r.readAsDataURL(f);
+        }))
       );
-
       const res = await fetch('/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ images }),
       });
-
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Extraction failed');
-
       const raw: LapRaw[] = data.laps;
       setLapsRaw(raw);
       setLaps(buildLaps(raw));
@@ -68,45 +120,34 @@ export default function CreatePage() {
     }
   }, [files]);
 
-  // ── Step 2: Fire job, then poll ────────────────────────────────────────
   const handleGenerate = useCallback(async () => {
     if (lapsRaw.length === 0) return;
     setStep('generating');
     setPollMsg('Starting render…');
-
     try {
-      // Fire job — returns immediately with jobId
       const res = await fetch('/api/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ laps: lapsRaw }),
+        body: JSON.stringify({ laps: lapsRaw, config }),
       });
-
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `Server error ${res.status}`);
-
       const id: string = data.jobId;
       setJobId(id);
-
-      // Start polling
       let elapsed = 0;
       pollRef.current = setInterval(async () => {
         elapsed += 3;
         setPollMsg(`Rendering… ${elapsed}s`);
-
         try {
           const statusRes = await fetch(`/api/jobs/status?jobId=${id}`);
           const status = await statusRes.json();
-
           if (status.status === 'done') {
             if (pollRef.current) clearInterval(pollRef.current);
-            // Trigger download
             const a = document.createElement('a');
             a.href = status.url;
             a.download = 'kart_overlay.mp4';
             a.click();
             setStep('done');
-            // Delete blob after download
             fetch(`/api/jobs/cleanup?jobId=${id}`, { method: 'DELETE' }).catch(() => {});
           } else if (status.status === 'error') {
             if (pollRef.current) clearInterval(pollRef.current);
@@ -118,23 +159,20 @@ export default function CreatePage() {
           setStep('error');
         }
       }, 3000);
-
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Unknown error starting job');
       setStep('error');
     }
-  }, [lapsRaw]);
+  }, [lapsRaw, config]);
 
   const reset = () => {
     if (pollRef.current) clearInterval(pollRef.current);
-    setFiles([]);
-    setStep('upload');
-    setLapsRaw([]);
-    setLaps([]);
-    setPlaying(false);
-    setErrorMsg('');
-    setJobId(null);
-    setPollMsg('');
+    setFiles([]); setStep('upload'); setLapsRaw([]); setLaps([]);
+    setPlaying(false); setErrorMsg(''); setJobId(null); setPollMsg('');
+  };
+
+  const applyPreset = (preset: Partial<HudConfig>) => {
+    setConfig({ ...DEFAULT_CONFIG, ...preset });
   };
 
   const sessionTotalMs = laps.length > 0 ? laps[laps.length - 1].cumMs : 0;
@@ -151,7 +189,6 @@ export default function CreatePage() {
       <div style={s.layout}>
         {/* ── Left panel ── */}
         <div style={s.left}>
-
           <section style={s.section}>
             <SectionHeader n="01" title="Upload Screenshots" />
             <ScreenshotUpload
@@ -164,9 +201,7 @@ export default function CreatePage() {
                 onClick={handleExtract}
                 disabled={extracting}
               >
-                {extracting
-                  ? 'Reading lap times…'
-                  : `Extract Laps from ${files.length} Screenshot${files.length > 1 ? 's' : ''}`}
+                {extracting ? 'Reading lap times…' : `Extract Laps from ${files.length} Screenshot${files.length > 1 ? 's' : ''}`}
               </button>
             )}
           </section>
@@ -175,6 +210,14 @@ export default function CreatePage() {
             <section style={s.section}>
               <SectionHeader n="02" title={`${lapsRaw.length} laps · ${sessionMins}:${sessionSecs}`} />
               <LapTable laps={laps} />
+            </section>
+          )}
+
+          {/* ── Customise section ── always visible after extract ── */}
+          {['extracted', 'generating', 'done'].includes(step) && (
+            <section style={s.section}>
+              <SectionHeader n="03" title="Customise HUD" />
+              <CustomisePanel config={config} onChange={setConfig} onPreset={applyPreset} />
               {step === 'extracted' && (
                 <button style={s.btnPrimary} onClick={handleGenerate}>
                   Generate Video →
@@ -185,18 +228,16 @@ export default function CreatePage() {
 
           {step === 'generating' && (
             <section style={s.section}>
-              <SectionHeader n="03" title="Generating Video" />
+              <SectionHeader n="04" title="Generating Video" />
               <div style={s.spinnerWrap}><div style={s.spinner} /></div>
               <p style={s.genMsg}>{pollMsg}</p>
-              <p style={s.genNote}>
-                Play the preview while you wait — download starts automatically when ready.
-              </p>
+              <p style={s.genNote}>Play the preview while you wait — download starts automatically when ready.</p>
             </section>
           )}
 
           {step === 'done' && (
             <section style={s.section}>
-              <SectionHeader n="03" title="Download Started ✓" />
+              <SectionHeader n="04" title="Download Started ✓" />
               <div style={s.compositeNote}>
                 <strong style={{ color: '#ffaa00' }}>In Premiere / DaVinci Resolve:</strong><br />
                 Import → blend mode <strong>Screen</strong> → black drops out.<br />
@@ -225,7 +266,7 @@ export default function CreatePage() {
         {/* ── Right panel ── */}
         <div style={s.right}>
           <div style={s.previewLabel}>LIVE PREVIEW</div>
-          <HudPreview laps={laps} playing={playing} />
+          <HudPreview laps={laps} playing={playing} config={config} />
           {laps.length > 0 && (
             <div style={s.playControls}>
               <button
@@ -239,11 +280,107 @@ export default function CreatePage() {
           )}
         </div>
       </div>
-
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
+
+// ── Customise Panel ────────────────────────────────────────────────────────────
+
+function CustomisePanel({
+  config, onChange, onPreset,
+}: {
+  config: HudConfig;
+  onChange: (c: HudConfig) => void;
+  onPreset: (p: Partial<HudConfig>) => void;
+}) {
+  const set = (key: keyof HudConfig, value: string | number | boolean) =>
+    onChange({ ...config, [key]: value });
+
+  return (
+    <div style={cp.wrap}>
+      {/* Presets */}
+      <div style={cp.row}>
+        <span style={cp.groupLabel}>PRESETS</span>
+        <div style={cp.presetRow}>
+          {PRESETS.map((p) => (
+            <button key={p.name} style={cp.presetBtn} onClick={() => onPreset(p.config)}>
+              {p.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={cp.divider} />
+
+      {/* Colours */}
+      <div style={cp.groupLabel}>COLOURS</div>
+      <div style={cp.grid}>
+        <ColorRow label="Border" value={config.borderColor} onChange={(v) => set('borderColor', v)} />
+        <ColorRow label="Accent bar" value={config.accentBarColor} onChange={(v) => set('accentBarColor', v)} />
+        <ColorRow label="Labels" value={config.labelColor} onChange={(v) => set('labelColor', v)} />
+        <ColorRow label="Numbers" value={config.primaryNumberColor} onChange={(v) => set('primaryNumberColor', v)} />
+        <ColorRow label="Fraction" value={config.fracNumberColor} onChange={(v) => set('fracNumberColor', v)} />
+        <ColorRow label="Total time" value={config.totalTimeColor} onChange={(v) => set('totalTimeColor', v)} />
+        <ColorRow label="Best time" value={config.bestColor} onChange={(v) => set('bestColor', v)} />
+      </div>
+
+      <div style={cp.divider} />
+
+      {/* Background */}
+      <div style={cp.groupLabel}>BACKGROUND</div>
+      <div style={cp.grid}>
+        <ColorRow label="BG colour" value={config.bgColor} onChange={(v) => set('bgColor', v)} />
+        <div style={cp.sliderRow}>
+          <span style={cp.sliderLabel}>Opacity</span>
+          <input
+            type="range" min={0} max={100} value={config.bgOpacity}
+            onChange={(e) => set('bgOpacity', Number(e.target.value))}
+            style={cp.slider}
+          />
+          <span style={cp.sliderVal}>{config.bgOpacity}%</span>
+        </div>
+      </div>
+
+      <div style={cp.divider} />
+
+      {/* Toggles */}
+      <div style={cp.groupLabel}>ELEMENTS</div>
+      <div style={cp.toggleGrid}>
+        <Toggle label="Lap Number" value={config.showLapNumber} onChange={(v) => set('showLapNumber', v)} />
+        <Toggle label="Lap Time" value={config.showLapTime} onChange={(v) => set('showLapTime', v)} />
+        <Toggle label="Total Time" value={config.showTotal} onChange={(v) => set('showTotal', v)} />
+        <Toggle label="Best Time" value={config.showBest} onChange={(v) => set('showBest', v)} />
+      </div>
+    </div>
+  );
+}
+
+function ColorRow({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div style={cp.colorRow}>
+      <span style={cp.colorLabel}>{label}</span>
+      <div style={cp.colorRight}>
+        <div style={{ ...cp.colorSwatch, background: value }} />
+        <input type="color" value={value} onChange={(e) => onChange(e.target.value)} style={cp.colorInput} />
+        <span style={cp.colorHex}>{value.toUpperCase()}</span>
+      </div>
+    </div>
+  );
+}
+
+function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div style={cp.toggleRow} onClick={() => onChange(!value)}>
+      <span style={cp.toggleLabel}>{label}</span>
+      <div style={{ ...cp.toggleTrack, background: value ? 'rgba(255,100,0,0.4)' : 'rgba(255,255,255,0.08)', borderColor: value ? '#ff6400' : 'rgba(255,255,255,0.15)' }}>
+        <div style={{ ...cp.toggleThumb, transform: value ? 'translateX(14px)' : 'translateX(0px)', background: value ? '#ff6400' : 'rgba(255,255,255,0.3)' }} />
+      </div>
+    </div>
+  );
+}
+
+// ── Supporting components ──────────────────────────────────────────────────────
 
 function SectionHeader({ n, title }: { n: string; title: string }) {
   return (
@@ -266,7 +403,7 @@ function LapTable({ laps }: { laps: Lap[] }) {
         return (
           <div key={lap.num} style={s.lapRow}>
             <span style={{ color: '#ff6400', fontWeight: 700 }}>{lap.num}</span>
-            <span style={{ color: '#fff' }}>{String(lapS).padStart(2,'0')}.{String(lapM).padStart(3,'0')}</span>
+            <span style={{ color: '#fff' }}>{String(lapS).padStart(2, '0')}.{String(lapM).padStart(3, '0')}</span>
             <span style={{ color: 'rgba(255,255,255,0.45)' }}>{cumMins}:{cumSecs}</span>
           </div>
         );
@@ -274,6 +411,33 @@ function LapTable({ laps }: { laps: Lap[] }) {
     </div>
   );
 }
+
+// ── Styles ─────────────────────────────────────────────────────────────────────
+
+const cp: Record<string, React.CSSProperties> = {
+  wrap: { display: 'flex', flexDirection: 'column', gap: 10, background: 'rgba(255,100,0,0.03)', border: '1px solid rgba(255,100,0,0.12)', borderRadius: 8, padding: '14px 16px' },
+  row: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  groupLabel: { fontFamily: 'monospace', fontSize: 10, color: 'rgba(255,100,0,0.5)', letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: 4 },
+  divider: { height: 1, background: 'rgba(255,100,0,0.08)', margin: '4px 0' },
+  presetRow: { display: 'flex', gap: 6 },
+  presetBtn: { background: 'rgba(255,100,0,0.1)', color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,100,0,0.2)', borderRadius: 4, padding: '4px 10px', fontFamily: 'monospace', fontSize: 11, cursor: 'pointer', letterSpacing: '0.05em' },
+  grid: { display: 'flex', flexDirection: 'column', gap: 6 },
+  colorRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  colorLabel: { fontFamily: 'monospace', fontSize: 11, color: 'rgba(255,255,255,0.4)' },
+  colorRight: { display: 'flex', alignItems: 'center', gap: 6 },
+  colorSwatch: { width: 16, height: 16, borderRadius: 3, border: '1px solid rgba(255,255,255,0.15)' },
+  colorInput: { width: 28, height: 22, border: 'none', padding: 0, background: 'none', cursor: 'pointer', borderRadius: 3 },
+  colorHex: { fontFamily: 'monospace', fontSize: 10, color: 'rgba(255,255,255,0.3)', width: 56 },
+  sliderRow: { display: 'flex', alignItems: 'center', gap: 8 },
+  sliderLabel: { fontFamily: 'monospace', fontSize: 11, color: 'rgba(255,255,255,0.4)', flex: 1 },
+  slider: { flex: 2, accentColor: '#ff6400' },
+  sliderVal: { fontFamily: 'monospace', fontSize: 11, color: 'rgba(255,255,255,0.4)', width: 32, textAlign: 'right' },
+  toggleGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
+  toggleRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '4px 0' },
+  toggleLabel: { fontFamily: 'monospace', fontSize: 11, color: 'rgba(255,255,255,0.4)' },
+  toggleTrack: { width: 32, height: 18, borderRadius: 9, border: '1px solid', display: 'flex', alignItems: 'center', padding: '0 2px', transition: 'all 0.2s' },
+  toggleThumb: { width: 12, height: 12, borderRadius: '50%', transition: 'all 0.2s' },
+};
 
 const s: Record<string, React.CSSProperties> = {
   root: { minHeight: '100vh', background: 'rgb(8,6,4)', color: '#fff' },
