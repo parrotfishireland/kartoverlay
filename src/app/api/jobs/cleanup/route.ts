@@ -32,19 +32,20 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'No blob URL found' }, { status: 404 });
   }
 
-  const deleteRes = await fetch('https://blob.vercel-storage.com/delete', {
-    method: 'DELETE',
-    headers: {
-      Authorization: `Bearer ${BLOB_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ urls: [blobUrl] }),
-  });
+  // Vercel Blob REST API: DELETE with url as query param
+  const deleteRes = await fetch(
+    `https://blob.vercel-storage.com?url=${encodeURIComponent(blobUrl)}`,
+    {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${BLOB_TOKEN}` },
+    }
+  );
+
+  const responseText = await deleteRes.text();
+  console.log('Blob delete response:', deleteRes.status, responseText);
 
   if (!deleteRes.ok) {
-    const text = await deleteRes.text();
-    console.error('Blob delete failed:', deleteRes.status, text);
-    return NextResponse.json({ error: 'Blob delete failed', detail: text }, { status: 500 });
+    return NextResponse.json({ error: 'Blob delete failed', status: deleteRes.status, detail: responseText }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });
