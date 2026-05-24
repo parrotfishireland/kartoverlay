@@ -106,6 +106,8 @@ export default function CreatePage() {
             a.download = 'kart_overlay.avi';
             a.click();
             setStep('done');
+            // Delete blob after download
+            fetch(`/api/jobs/cleanup?jobId=${id}`, { method: 'DELETE' }).catch(() => {});
           } else if (status.status === 'error') {
             if (pollRef.current) clearInterval(pollRef.current);
             throw new Error('Render failed on server');
