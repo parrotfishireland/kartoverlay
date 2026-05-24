@@ -103,7 +103,7 @@ export default function CreatePage() {
             // Trigger download
             const a = document.createElement('a');
             a.href = status.url;
-            a.download = 'kart_overlay.avi';
+            a.download = 'kart_overlay.mp4';
             a.click();
             setStep('done');
             // Delete blob after download
@@ -203,7 +203,7 @@ export default function CreatePage() {
                 Use the lap number incrementing as your sync marker.
               </div>
               {jobId && (
-                <a href={`/api/jobs/download?jobId=${jobId}`} download="kart_overlay.avi" style={s.btnDownload}>
+                <a href={`/api/jobs/download?jobId=${jobId}`} download="kart_overlay.mp4" style={s.btnDownload}>
                   Re-download
                 </a>
               )}

@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
     status: 200,
     headers: {
       'Content-Type': 'video/x-msvideo',
-      'Content-Disposition': 'attachment; filename="kart_overlay.avi"',
+      'Content-Disposition': 'attachment; filename="kart_overlay.mp4"',
       'Content-Length': String(buffer.byteLength),
     },
   });
