@@ -117,7 +117,7 @@ export default function CreatePage() {
             a.download = 'kart_overlay.mp4';
             a.click();
             setStep('done');
-            fetch(`/api/jobs/cleanup?jobId=${id}`, { method: 'DELETE' }).catch(() => {});
+            setTimeout(() => fetch(`/api/jobs/cleanup?jobId=${id}`, { method: 'DELETE' }).catch(() => {}), 30000);
           } else if (status.status === 'error') {
             if (pollRef.current) clearInterval(pollRef.current);
             throw new Error('Render failed on server');
