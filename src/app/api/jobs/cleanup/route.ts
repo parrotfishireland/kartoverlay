@@ -11,7 +11,6 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'jobId required' }, { status: 400 });
   }
 
-  // Get the blob URL from Redis
   const redisRes = await fetch(`${UPSTASH_URL}/get/${encodeURIComponent(`job_${jobId}`)}`, {
     headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
   });
@@ -20,7 +19,6 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Job not found' }, { status: 404 });
   }
 
-  // Parse once — result may be a double-encoded string
   let job: { status: string; url?: string };
   try {
     const first = JSON.parse(redisData.result);
@@ -34,16 +32,14 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'No blob URL found' }, { status: 404 });
   }
 
-  // Extract pathname from the blob URL
-  const pathname = new URL(blobUrl).pathname.slice(1);
-
-  const deleteRes = await fetch(
-    `https://blob.vercel-storage.com/${pathname}`,
-    {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${BLOB_TOKEN}` },
-    }
-  );
+  const deleteRes = await fetch('https://blob.vercel-storage.com/delete', {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${BLOB_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ urls: [blobUrl] }),
+  });
 
   if (!deleteRes.ok) {
     const text = await deleteRes.text();
