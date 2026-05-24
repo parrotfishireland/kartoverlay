@@ -1,7 +1,7 @@
 // src/app/api/jobs/cleanup/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { del } from '@vercel/blob';
 
-const BLOB_TOKEN    = process.env.BLOB_READ_WRITE_TOKEN ?? '';
 const UPSTASH_URL   = process.env.UPSTASH_REDIS_REST_URL ?? '';
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 
@@ -32,21 +32,6 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'No blob URL found' }, { status: 404 });
   }
 
-  // Vercel Blob REST API: DELETE with url as query param
-  const deleteRes = await fetch(
-    `https://blob.vercel-storage.com?url=${encodeURIComponent(blobUrl)}`,
-    {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${BLOB_TOKEN}` },
-    }
-  );
-
-  const responseText = await deleteRes.text();
-  console.log('Blob delete response:', deleteRes.status, responseText);
-
-  if (!deleteRes.ok) {
-    return NextResponse.json({ error: 'Blob delete failed', status: deleteRes.status, detail: responseText }, { status: 500 });
-  }
-
+  await del(blobUrl);
   return NextResponse.json({ ok: true });
 }
