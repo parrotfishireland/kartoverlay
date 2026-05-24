@@ -7,25 +7,9 @@ import ScreenshotUpload from '@/components/ScreenshotUpload';
 import HudPreview from '@/components/HudPreview';
 import { buildLaps, LapRaw, Lap } from '@/lib/timer';
 
-type Step = 'upload' | 'extracted' | 'generating' | 'done' | 'error';
-
 import { HudConfig, DEFAULT_CONFIG } from '@/lib/hudConfig';
-  // Colours
-  borderColor: string;
-  accentBarColor: string;
-  labelColor: string;
-  primaryNumberColor: string;
-  fracNumberColor: string;
-  totalTimeColor: string;
-  bestColor: string;
-  bgColor: string;
-  bgOpacity: number; // 0–100
-  // Toggles
-  showLapNumber: boolean;
-  showLapTime: boolean;
-  showTotal: boolean;
-  showBest: boolean;
-}
+
+type Step = 'upload' | 'extracted' | 'generating' | 'done' | 'error';
 
 
 const PRESETS: { name: string; config: Partial<HudConfig> }[] = [
