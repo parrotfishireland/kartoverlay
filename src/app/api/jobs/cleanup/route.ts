@@ -27,9 +27,12 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'No blob URL found' }, { status: 404 });
   }
 
-  // Vercel Blob delete uses the /v1/blob endpoint with the URL as a query param
+  // Extract pathname from the blob URL
+  // e.g. https://abc.public.blob.vercel-storage.com/kart_overlay_xxx.avi
+  const pathname = new URL(blobUrl).pathname.slice(1); // remove leading /
+
   const deleteRes = await fetch(
-    `https://blob.vercel-storage.com?url=${encodeURIComponent(blobUrl)}`,
+    `https://blob.vercel-storage.com/${pathname}`,
     {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${BLOB_TOKEN}` },
